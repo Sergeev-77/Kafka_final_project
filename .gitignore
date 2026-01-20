@@ -4,4 +4,4 @@ __pycache__
 blocking_app-data
 test.txt
 checkpoints
-spark/schema.json
+/spark/schema.json
