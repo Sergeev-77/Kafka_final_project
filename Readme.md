@@ -78,11 +78,13 @@ UI для обоих kafka-кластеров и schema-registry
 Коннекторы:
 
 1. MirrorSourceConnector
+
     Зеркалирование топика и ACL goods-filtered входящего кластера в source.goods-filtered аналитического
 
     Конфиг: [connect-config/mm2-source.json](connect-config/mm2-source.json)
 
 2. HdfsSinkConnector
+
     Sink топика source.goods-filtered аналитического кластера в hdfs
 
     Конфиг: [connect-config/hdfs-sink.json](connect-config/hdfs-sink.json)    
