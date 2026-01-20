@@ -1,0 +1,7 @@
+.venv
+.venv_win
+__pycache__
+blocking_app-data
+test.txt
+checkpoints
+spark/schema.json

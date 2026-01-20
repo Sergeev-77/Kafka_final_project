@@ -1,0 +1,33 @@
+{
+  "name": "hdfs-sink-goods",
+  "config": {
+    "connector.class": "io.confluent.connect.hdfs.HdfsSinkConnector",
+    "tasks.max": "2",
+    "topics": "source.goods-filtered",
+    "hdfs.url": "hdfs://hdfs-nn:9000/data/kafka",
+    "hadoop.conf.dir": "/opt/hadoop/etc/hadoop",
+    "hadoop.home": "/opt/hadoop",
+    "flush.size": "10",
+    "rotate.interval.ms": "10000",
+    "partition.duration.ms": "3600000",
+    "format.class": "io.confluent.connect.hdfs.json.JsonFormat",
+    "partitioner.class": "io.confluent.connect.storage.partitioner.DefaultPartitioner",
+    "locale": "ru",
+    "timezone": "UTC",
+    "value.converter": "io.confluent.connect.json.JsonSchemaConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+    "value.converter.subject.name.strategy": "io.confluent.kafka.serializers.subject.RecordNameStrategy",
+    "value.converter.schemas.enable": true,
+    "key.converter": "org.apache.kafka.connect.converters.ByteArrayConverter",
+    "errors.tolerance": "all",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true",
+    "consumer.override.security.protocol": "SASL_SSL",
+    "consumer.override.sasl.mechanism": "PLAIN",
+    "consumer.override.sasl.jaas.config": "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"admin_password\";",
+    "consumer.override.ssl.truststore.location": "/etc/kafka/secrets/kafka.truststore.jks",
+    "consumer.override.ssl.truststore.password": "password",
+    "consumer.override.ssl.truststore.type": "PKCS12",
+    "consumer.override.ssl.endpoint.identification.algorithm": ""
+  }
+}

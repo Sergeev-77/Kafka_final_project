@@ -1,0 +1,61 @@
+{
+    "name": "mm2-mirroring",
+    "config": {
+        "connector.class": "org.apache.kafka.connect.mirror.MirrorSourceConnector",
+        "source.cluster.alias": "source",
+        "source.cluster.bootstrap.servers": "kafka-0:9092,kafka-1:9092",
+        "target.cluster.bootstrap.servers": "kafka-mirror-0:9092,kafka-mirror-1:9092",
+        "producer.override.bootstrap.servers": "kafka-mirror-0:9092,kafka-mirror-1:9092",
+        "topics": "goods-filtered",
+        
+    
+        "source.cluster.security.protocol": "SASL_SSL",
+        "source.cluster.sasl.mechanism": "PLAIN",
+        "source.cluster.sasl.jaas.config": "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"admin_password\";",
+        "source.cluster.ssl.truststore.location": "/etc/kafka/secrets/kafka.truststore.jks",
+        "source.cluster.ssl.truststore.password": "password",
+        "source.cluster.ssl.endpoint.identification.algorithm": "",
+
+    
+        "target.cluster.security.protocol": "SASL_SSL",
+        "target.cluster.sasl.mechanism": "PLAIN",
+        "target.cluster.sasl.jaas.config": "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"admin_password\";",
+        "target.cluster.ssl.truststore.location": "/etc/kafka/secrets/kafka.truststore.jks",
+        "target.cluster.ssl.truststore.password": "password",
+        "target.cluster.ssl.endpoint.identification.algorithm": "",
+
+    
+        "producer.override.security.protocol": "SASL_SSL",
+        "producer.override.sasl.mechanism": "PLAIN",
+        "producer.override.sasl.jaas.config": "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"admin_password\";",
+        "producer.override.ssl.truststore.location": "/etc/kafka/secrets/kafka.truststore.jks",
+        "producer.override.ssl.truststore.password": "password",
+        "producer.override.ssl.endpoint.identification.algorithm": "",
+
+        
+        
+        "tasks.max": 4,
+        "replication.factor": 2,
+        "producer.acks": "all",
+        "producer.enable.idempotence": "true",
+        "producer.compression.type": "lz4",
+        "offset-syncs.topic.replication.factor": 2,
+        "producer.override.key.converter": "io.confluent.connect.json.StringConverter",
+        "producer.override.value.converter": "io.confluent.connect.json.StringConverter",
+        "key.converter": "org.apache.kafka.connect.converters.ByteArrayConverter",
+        "value.converter": "org.apache.kafka.connect.converters.ByteArrayConverter",
+        "key.converter.schemas.enable": "true",
+        "value.converter.schemas.enable": "true",
+        "key.converter.schema.registry.url": "http://schema-registry:8081",
+        "value.converter.schema.registry.url": "http://schema-registry:8081",
+
+        "replication.policy.class": "org.apache.kafka.connect.mirror.DefaultReplicationPolicy",
+
+
+        "sync.topic.acls.enabled": "true",
+        "sync.group.offsets.enabled": "true",
+        "sync.topic.acls.interval.seconds": 10,
+
+        "emit.checkpoints.enabled": "true"
+    }
+}

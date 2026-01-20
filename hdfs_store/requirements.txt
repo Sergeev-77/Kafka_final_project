@@ -1,0 +1,7 @@
+confluent-kafka==2.13.0
+certifi==2026.1.4
+httpx==0.28.1
+Authlib==1.6.6
+cachetools==6.2.4
+attrs==25.4.0
+hdfs==2.7.3

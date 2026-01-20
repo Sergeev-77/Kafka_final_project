@@ -1,0 +1,543 @@
+networks:
+  proxynet:
+    name: custom_network
+
+volumes:
+  kafka_0_data:
+    name: kafka-0-data
+  kafka_1_data:
+    name: kafka-1-data
+  kafka_mirror_0_data:
+    name: kafka-mirror-0-data
+  kafka_mirror_1_data:
+    name: kafka-mirror-1-data
+  spark_data:
+    name: spark_data
+
+x-kafka-common:
+  &kafka-common
+  image: confluentinc/cp-kafka:7.4.4
+  restart: always
+  depends_on:
+   - zookeeper
+  environment:
+    &kafka-common-env
+    KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    KAFKA_LOG_DIRS: /var/lib/kafka/data
+    KAFKA_HEAP_OPTS: "-Xms1G -Xmx2G"
+
+    # SSL settings
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SASL_SSL,SASL_SSL:SASL_SSL
+    KAFKA_SSL_CLIENT_AUTH: none
+    KAFKA_LISTENER_NAME_INTERNAL_SSL_CLIENT_AUTH: none
+    KAFKA_LISTENER_NAME_SASL_SSL_SSL_CLIENT_AUTH: none
+    KAFKA_SSL_KEYSTORE_TYPE: JKS
+    KAFKA_SSL_TRUSTSTORE_TYPE: JKS
+    KAFKA_SSL_KEYSTORE_FILENAME: kafka.keystore.jks
+    KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.keystore.jks
+    KAFKA_SSL_KEY_CREDENTIALS: password
+    KAFKA_SSL_KEYSTORE_CREDENTIALS: password
+    KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.truststore.jks
+    KAFKA_SSL_TRUSTSTORE_PASSWORD: password
+    KAFKA_SSL_KEYSTORE_PASSWORD: password
+    KAFKA_SSL_KEY_PASSWORD: password
+    KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+
+    # SASL settings
+    KAFKA_ZOOKEEPER_SASL_CLIENT: 'true'
+    KAFKA_ZOOKEEPER_SET_ACL: 'false'  
+    KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+    KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: PLAIN
+    KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+    KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+    KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.authorizer.AclAuthorizer
+    KAFKA_SUPER_USERS: User:admin
+    KAFKA_OPTS: >-
+      -Djava.security.auth.login.config=/etc/kafka/config/kafka_server_jaas.conf
+    # -Djavax.net.debug=ssl:handshake:verbose 
+    # убрать отладку  
+  
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  networks:
+    - proxynet
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.4
+    container_name: zookeeper
+    hostname: zookeeper
+    volumes:
+      - ./sasl/zookeeper.sasl.jaas.conf:/etc/zookeeper/config/zookeeper.sasl.jaas.conf
+      - ./certs:/etc/zookeeper/secrets
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_OPTS: >-
+        -Djava.security.auth.login.config=/etc/zookeeper/config/zookeeper.sasl.jaas.conf
+        -Dzookeeper.authProvider.sasl=org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+        -Dzookeeper.allowSaslFailedClients=false
+        -Dzookeeper.requireClientAuthScheme=sasl
+    networks:
+      - proxynet
+
+  zookeeper-mirror:
+    image: confluentinc/cp-zookeeper:7.4.4
+    container_name: zookeeper-mirror
+    hostname: zookeeper-mirror
+    volumes:
+      - ./sasl/zookeeper.sasl.jaas.conf:/etc/zookeeper/config/zookeeper.sasl.jaas.conf
+      - ./certs:/etc/zookeeper/secrets
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2182
+      ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_OPTS: >-
+        -Djava.security.auth.login.config=/etc/zookeeper/config/zookeeper.sasl.jaas.conf
+        -Dzookeeper.authProvider.sasl=org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+        -Dzookeeper.allowSaslFailedClients=false
+        -Dzookeeper.requireClientAuthScheme=sasl
+    networks:
+      - proxynet
+
+  kafka-0:
+    <<: *kafka-common
+    container_name: kafka-0
+    ports:
+      - "127.0.0.1:9094:9094"
+    volumes:
+      - ./certs:/etc/kafka/secrets
+      - ./sasl/kafka.sasl.jaas.conf:/etc/kafka/config/kafka_server_jaas.conf
+      - ./sasl/admin.properties:/etc/kafka/config/admin.properties
+      - kafka_0_data:/var/lib/kafka/data
+    environment:
+      <<: *kafka-common-env
+      KAFKA_BROKER_ID: 0
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,SASL_SSL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-0:9092,SASL_SSL://localhost:9094
+
+  kafka-1:
+    <<: *kafka-common
+    container_name: kafka-1
+    ports:
+      - "127.0.0.1:9095:9095"
+    volumes:
+      - ./certs:/etc/kafka/secrets
+      - ./sasl/kafka.sasl.jaas.conf:/etc/kafka/config/kafka_server_jaas.conf
+      - ./sasl/admin.properties:/etc/kafka/config/admin.properties
+      - kafka_1_data:/var/lib/kafka/data
+    environment:
+      <<: *kafka-common-env
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,SASL_SSL://0.0.0.0:9095
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:9092,SASL_SSL://localhost:9095
+
+  kafka-mirror-0:
+    <<: *kafka-common
+    container_name: kafka-mirror-0
+    ports:
+      - "127.0.0.1:9096:9096"
+    volumes:
+      - ./certs:/etc/kafka/secrets
+      - ./sasl/kafka.sasl.jaas.conf:/etc/kafka/config/kafka_server_jaas.conf
+      - ./sasl/admin.properties:/etc/kafka/config/admin.properties
+      - kafka_mirror_0_data:/var/lib/kafka/data
+    environment:
+      <<: *kafka-common-env
+      KAFKA_BROKER_ID: 0
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-mirror:2182
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,SASL_SSL://0.0.0.0:9096
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-mirror-0:9092,SASL_SSL://localhost:9096
+
+  kafka-mirror-1:
+    <<: *kafka-common
+    container_name: kafka-mirror-1
+    ports:
+      - "127.0.0.1:9097:9097"
+    volumes:
+      - ./certs:/etc/kafka/secrets
+      - ./sasl/kafka.sasl.jaas.conf:/etc/kafka/config/kafka_server_jaas.conf
+      - ./sasl/admin.properties:/etc/kafka/config/admin.properties
+      - kafka_mirror_1_data:/var/lib/kafka/data
+    environment:
+      <<: *kafka-common-env
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-mirror:2182
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,SASL_SSL://0.0.0.0:9097
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-mirror-1:9092,SASL_SSL://localhost:9097
+
+  ui:
+    image: provectuslabs/kafka-ui:v0.7.0
+    container_name: ui
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_SSL_TRUSTSTORE_PASSWORD: password
+
+      KAFKA_CLUSTERS_0_PROPERTIES_SSL_TRUSTSTORE_PASSWORD: password
+      KAFKA_CLUSTERS_0_NAME: main
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-0:9092
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: SASL_SSL
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_MECHANISM: PLAIN
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username=admin
+        password=admin_password;
+      KAFKA_CLUSTERS_0_PROPERTIES_SSL_TRUSTSTORE_TYPE: JKS
+      KAFKA_CLUSTERS_0_PROPERTIES_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.truststore.jks
+
+      KAFKA_CLUSTERS_1_PROPERTIES_SSL_TRUSTSTORE_PASSWORD: password
+      KAFKA_CLUSTERS_1_NAME: mirror
+      KAFKA_CLUSTERS_1_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_1_BOOTSTRAPSERVERS: kafka-mirror-0:9092
+      KAFKA_CLUSTERS_1_PROPERTIES_SECURITY_PROTOCOL: SASL_SSL
+      KAFKA_CLUSTERS_1_PROPERTIES_SASL_MECHANISM: PLAIN
+      KAFKA_CLUSTERS_1_PROPERTIES_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username=admin
+        password=admin_password;
+      KAFKA_CLUSTERS_1_PROPERTIES_SSL_TRUSTSTORE_TYPE: JKS
+      KAFKA_CLUSTERS_1_PROPERTIES_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.truststore.jks
+    volumes:
+      - ./certs:/etc/kafka/secrets
+    depends_on:
+      - kafka-0
+    networks:
+      - proxynet
+
+  schema-registry:
+    image: bitnamilegacy/schema-registry:7.6
+    container_name: schema-registry
+    ports:
+      - '127.0.0.1:8081:8081'
+    restart: always
+    depends_on:
+      - kafka-0
+      - kafka-1
+    environment:
+      SCHEMA_REGISTRY_KAFKA_BROKERS: SASL_SSL://kafka-0:9092,SASL_SSL://kafka-1:9092
+      SCHEMA_REGISTRY_KAFKASTORE_SECURITY_PROTOCOL: SASL_SSL
+      SCHEMA_REGISTRY_KAFKASTORE_SASL_MECHANISM: PLAIN
+      SCHEMA_REGISTRY_KAFKA_SASL_USERS: admin
+      SCHEMA_REGISTRY_KAFKA_SASL_PASSWORDS: admin_password
+      SCHEMA_REGISTRY_KAFKA_TRUSTSTORE_LOCATION: /opt/bitnami/schema-registry/certs/schema-registry.truststore.jks
+      SCHEMA_REGISTRY_KAFKA_TRUSTSTORE_PASSWORD: password
+      SCHEMA_REGISTRY_KAFKA_KEYSTORE_PASSWORD: password
+      SCHEMA_REGISTRY_KAFKA_KEY_PASSWORD: password
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: BACKWARD
+    volumes:
+      - ./certs/kafka.keystore.jks:/opt/bitnami/schema-registry/certs/schema-registry.keystore.jks
+      - ./certs/kafka.truststore.jks:/opt/bitnami/schema-registry/certs/schema-registry.truststore.jks
+    networks:
+      - proxynet
+
+  kafka-init:
+   image: confluentinc/cp-kafka:7.4.4
+   container_name: kafka-init
+   depends_on:
+     - kafka-0
+     - kafka-mirror-0
+     - kafka-connect
+   command: ["bash", "/opt/kafka-init.sh"]
+   volumes:
+    - ./certs:/etc/kafka/secrets
+    - ./connect-config/:/opt/connect-config
+    - ./sasl/admin.properties:/etc/kafka/config/admin.properties
+    - ./kafka-init.sh:/opt/kafka-init.sh
+   networks:
+     - proxynet
+
+  shop-api:
+    container_name: shop-api
+    build:
+      context: ./shop_api
+    restart: always
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./certs:/etc/kafka/secrets
+      - ./shop_api:/app
+    working_dir: /app
+    command: python app.py
+    networks:
+      - proxynet
+
+  blocking:
+    container_name: blocking
+    build:
+      context: ./blocking
+    depends_on:
+       kafka-init:
+        condition: service_completed_successfully
+    restart: always
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./certs:/etc/kafka/secrets
+      - ./blocking:/app
+    working_dir: /app
+    command: faust -A app worker
+    networks:
+      - proxynet
+
+  kafka-connect:
+    container_name: kafka-connect
+    build:
+      context: ./kafka-connect
+    ports:
+      - "8083:8083"
+      - "9875:9875"
+      - "9876:9876"
+    depends_on:
+      - kafka-0
+      - schema-registry
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka-mirror-0:9092,kafka-mirror-1:9092"
+      CONNECT_SECURITY_PROTOCOL: SASL_SSL
+      CONNECT_SASL_MECHANISM: PLAIN
+
+      CONNECT_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="admin_password";'
+
+      CONNECT_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.truststore.jks
+      CONNECT_SSL_TRUSTSTORE_PASSWORD: password
+      CONNECT_SSL_TRUSTSTORE_TYPE: PKCS12
+      CONNECT_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+
+      CONNECT_PRODUCER_SSL_TRUSTSTORE_TYPE: PKCS12
+      CONNECT_CONSUMER_SSL_TRUSTSTORE_TYPE: PKCS12
+      CONNECT_PRODUCER_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+      CONNECT_CONSUMER_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: 'kafka-connect'
+      CONNECT_REST_ADVERTISED_HOST_NAME: "127.0.0.1"
+
+      # Хранение конфигурации, смещений и статусов
+      CONNECT_CONFIG_STORAGE_TOPIC: 'connect-config-storage'
+      CONNECT_OFFSET_STORAGE_TOPIC: 'connect-offset-storage'
+      CONNECT_STATUS_STORAGE_TOPIC: 'connect-status-storage'
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 2
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 2
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 2
+
+      # Конвертеры
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+
+      # Export JMX metrics to :9876/metrics for Prometheus
+      KAFKA_JMX_PORT: '9875'
+      KAFKA_OPTS: >-
+        -javaagent:/opt/jmx_prometheus_javaagent-0.15.0.jar=9876:/opt/kafka-connect.yml
+        -Djavax.net.ssl.trustStore=/etc/kafka/secrets/kafka.truststore.jks
+        -Djavax.net.ssl.trustStorePassword=password
+        -Djavax.net.ssl.trustStoreType=PKCS12
+      CONNECT_CONFIG_PROVIDERS: "file"
+      CONNECT_CONFIG_PROVIDERS_FILE_CLASS: "org.apache.kafka.common.config.provider.FileConfigProvider"
+
+      CONNECT_CONNECTOR_CLIENT_CONFIG_OVERRIDE_POLICY: All
+
+      # Пути к плагинам
+      CONNECT_PLUGIN_PATH: /usr/share/java,/etc/kafka-connect/jars
+    volumes:
+      - ./confluent-hub-components/:/etc/kafka-connect/jars
+      - ./certs:/etc/kafka/secrets
+      - ./sasl/admin.properties:/etc/kafka/config/admin.properties
+      - ./hdfs_conf/config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hdfs_conf/config/hdfs-site-namenode.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+    networks:
+      - proxynet
+
+  hdfs-nn:
+    image: apache/hadoop:3.4.1
+    container_name:   hdfs-nn
+    user: "root"
+    restart: always
+    platform: linux/amd64
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"   
+          memory: "2g" 
+    shm_size: 10G
+    ports:
+      - "9870:9870"  #  Web UI
+      - "9000:9000"  # RPC 
+    volumes:
+      - ./hdfs_conf/config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hdfs_conf/config/hdfs-site-namenode.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+      - ./hdfs_conf/namenode_entrypoint.sh:/namenode_entrypoint.sh
+    entrypoint: ["/bin/bash", "/namenode_entrypoint.sh"]
+    command: ["hdfs", "namenode"]
+    networks:
+      - proxynet
+
+  hdfs-dn-0:
+    image: apache/hadoop:3.4.1
+    container_name: hdfs-dn-0
+    user: "root"
+    restart: always
+    platform: linux/amd64
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"   # Ограничение использования CPU
+          memory: "2g"  # Ограничение использования RAM
+    shm_size: 10G
+    depends_on:
+      - hdfs-nn
+    ports:
+      - "9864:9864"  # HTTP-порт для Web UI DataNode №1
+      - "9970:9970"  # RPC порт для запросов от NameNode
+    volumes:
+      - ./hdfs_conf/config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hdfs_conf/config/hdfs-site-datanode-0.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+      - ./hdfs_conf/datanode_entrypoint.sh:/datanode_entrypoint.sh
+    entrypoint: ["/bin/bash", "/datanode_entrypoint.sh"]
+    command: ["hdfs", "datanode"]
+    networks:
+      - proxynet
+
+  hdfs-dn-1:
+    image: apache/hadoop:3.4.1
+    container_name: hdfs-dn-1
+    user: "root"
+    restart: always
+    platform: linux/amd64
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "2g"
+    shm_size: 10G
+    depends_on:
+      - hdfs-nn
+    ports:
+      - "9865:9865" 
+      - "9971:9971" 
+    volumes:
+      - ./hdfs_conf/config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hdfs_conf/config/hdfs-site-datanode-1.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+      - ./hdfs_conf/datanode_entrypoint.sh:/datanode_entrypoint.sh
+    entrypoint: ["/bin/bash", "/datanode_entrypoint.sh"]
+    command: ["hdfs", "datanode"]
+    networks:
+      - proxynet
+
+  spark-master:
+    build:
+      context: ./spark
+    container_name: spark-master
+    user: "1001:1001"
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "7077:7077"
+      - "8082:8080"
+    volumes:
+      - ./certs:/etc/kafka/secrets
+    networks:
+      - proxynet
+
+  spark-worker:
+    build:
+      context: ./spark
+    container_name: spark-worker
+    user: "1001:1001"
+    depends_on:
+      - spark-master
+    volumes:
+      - ./certs:/etc/kafka/secrets
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    networks:
+      - proxynet
+
+  spark-app:
+    build:
+      context: ./spark
+    container_name: spark-app
+    user: "1001:1001"
+    depends_on:
+       kafka-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./spark:/app
+      - ./certs:/etc/kafka/secrets
+    command: spark-submit /app/app.py
+    networks:
+      - proxynet
+
+  ksqldb:
+    image: confluentinc/ksqldb-server:latest
+    container_name: ksqldb    
+    restart: always
+    depends_on:
+       kafka-init:
+        condition: service_completed_successfully
+    ports:
+      - "8088:8088"
+    environment:
+      KSQL_BOOTSTRAP_SERVERS: "kafka-mirror-0:9092,kafka-mirror-1:9092"
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+
+      KSQL_KSQL_STREAMS_SECURITY_PROTOCOL: "SASL_SSL"
+      KSQL_KSQL_STREAMS_SASL_MECHANISM: "PLAIN"
+      KSQL_KSQL_STREAMS_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin"
+        password="admin_password";
+      KSQL_KSQL_STREAMS_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.truststore.jks
+      KSQL_KSQL_STREAMS_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+      KSQL_KSQL_STREAMS_SSL_TRUSTSTORE_PASSWORD: password
+      
+      KSQL_SECURITY_PROTOCOL: "SASL_SSL"
+      KSQL_SASL_MECHANISM: "PLAIN"
+      KSQL_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin"
+        password="admin_password";
+      KSQL_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.truststore.jks
+      KSQL_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+      KSQL_SSL_TRUSTSTORE_PASSWORD: password
+
+      KSQL_KSQL_STREAMS_REPLICATION_FACTOR: 1
+      KSQL_KSQL_INTERNAL_TOPIC_REPLICAS: 2
+      KSQL_KSQL_SERVICE_ID: ksqldb_service_01
+      KSQL_CONFLUENT_SUPPORT_METRICS_ENABLE: false
+    volumes:
+      - ./certs:/etc/kafka/secrets
+    networks:
+      - proxynet
+
+  prometheus:
+    container_name: prometeus
+    image: prom/prometheus:v2.30.3
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus:/etc/prometheus
+    command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+    links:
+      - kafka-connect
+    networks:
+      - proxynet
+
+  grafana:
+    container_name: grafana
+    build:
+      context: ./grafana
+    ports:
+      - 3000:3000
+    networks:
+      - proxynet
